@@ -8,13 +8,44 @@ import { uploadTranscript, getTranscriptUrl } from '../utils/spaces.js';
 import { extractVideoId } from '../utils/videoId.js';
 
 /**
+ * Build Redis configuration for Bull queue
+ * Handles both plain redis:// and TLS rediss:// URLs
+ */
+function buildRedisConfig(redisUrl) {
+  // For TLS connections (rediss://), we need explicit config
+  // Bull's internal ioredis doesn't auto-configure TLS for all connections
+  if (redisUrl.startsWith('rediss://')) {
+    const url = new URL(redisUrl);
+    logger.info('Configuring Bull with TLS Redis connection', {
+      host: url.hostname,
+      port: url.port || 25061,
+    });
+    return {
+      port: parseInt(url.port, 10) || 25061,
+      host: url.hostname,
+      password: url.password || undefined,
+      username: url.username || 'default',
+      tls: {
+        rejectUnauthorized: false, // Required for DO managed databases (self-signed certs)
+      },
+      maxRetriesPerRequest: null, // Required for Bull v4+ with blocking connections
+      enableReadyCheck: false, // Faster connection, skip CLUSTER check
+    };
+  }
+  
+  // Plain redis:// URL - use as-is
+  return redisUrl;
+}
+
+/**
  * Create Bull queue for transcription jobs
  * Persisted to Redis with automatic recovery
  */
 export function createTranscriptionQueue() {
-  // Bull handles Redis connection internally via config.redis.url
+  const redisConfig = buildRedisConfig(config.redis.url);
+  
   const transcriptionQueue = new Queue('transcription', {
-    redis: config.redis.url,
+    redis: redisConfig,
     settings: {
       maxStalledCount: 2,
       lockDuration: 30000, // 30s lock duration
@@ -221,6 +252,27 @@ export function createTranscriptionQueue() {
   transcriptionQueue.on('stalled', job => {
     logger.warn('Transcription job stalled', {
       jobId: job.id,
+    });
+  });
+
+  /**
+   * Redis connection error handler
+   * Critical for debugging TLS/connection issues in production
+   */
+  transcriptionQueue.on('error', error => {
+    logger.error('Bull queue error (likely Redis connection issue)', {
+      error: error.message,
+      stack: error.stack,
+      code: error.code,
+    });
+  });
+
+  /**
+   * Queue ready handler - confirms worker is listening
+   */
+  transcriptionQueue.on('ready', () => {
+    logger.info('Bull queue ready - worker is now processing jobs', {
+      concurrency: config.worker.concurrency,
     });
   });
 
