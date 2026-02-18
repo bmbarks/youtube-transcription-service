@@ -108,3 +108,4 @@ docker-compose.override.yml
 /public/downloads
 .transcription-jobs
 transcription-cache/
+cookies/
