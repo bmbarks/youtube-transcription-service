@@ -17,13 +17,14 @@ export async function extractYouTubeTranscript(videoUrl, options = {}) {
     const videoId = extractVideoId(videoUrl);
 
     // Build yt-dlp command to extract subtitles
+    // Note: %(id)s must be quoted to prevent shell interpretation of parentheses
     const args = [
       '--write-subs',
       '--skip-download',
       '--sub-format', 'json3',
       '--sub-langs', 'en',
-      '-o', '%(id)s.json3',
-      videoUrl,
+      '-o', `"%(id)s.json3"`,
+      `"${videoUrl}"`,
     ];
 
     const command = `yt-dlp ${args.join(' ')}`;

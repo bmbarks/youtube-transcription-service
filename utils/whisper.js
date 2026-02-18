@@ -117,6 +117,7 @@ export async function transcribeWithWhisper(audioFilePath, options = {}) {
  */
 export async function downloadAudioFromYouTube(videoUrl) {
   const tempDir = `/tmp/whisper_${uuidv4()}`;
+  // Note: %(ext)s must be quoted to prevent shell interpretation of parentheses
   const outputTemplate = `${tempDir}/audio.%(ext)s`;
 
   try {
@@ -125,7 +126,9 @@ export async function downloadAudioFromYouTube(videoUrl) {
     await fsPromises.mkdir(tempDir, { recursive: true });
 
     // Download audio using yt-dlp
-    const command = `yt-dlp -f bestaudio --extract-audio --audio-format mp3 --audio-quality 192K -o "${outputTemplate}" "${videoUrl}"`;
+    // Format selector: ba[ext=m4a] (best audio m4a) -> ba (best audio) -> b (best overall)
+    // This fallback chain handles YouTube API changes that block specific format requests
+    const command = `yt-dlp -f 'ba[ext=m4a]/ba/b' --extract-audio --audio-format mp3 --audio-quality 192K -o '${outputTemplate}' "${videoUrl}"`;
 
     logger.info('Starting audio download from YouTube', {
       videoUrl,
