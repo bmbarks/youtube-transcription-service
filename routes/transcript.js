@@ -26,8 +26,8 @@ export function createTranscriptRouter(transcriptionQueue) {
    *   "source": "youtube-native",
    *   "confidence": 0.98,
    *   "processTime": "0.8 seconds",
-   *   "transcriptUrl": "https://barkstech-media.nyc3.digitaloceanspaces.com/transcripts/dQw4w9WgXcQ/transcript.txt",
-   *   "transcriptJsonUrl": "https://barkstech-media.nyc3.digitaloceanspaces.com/transcripts/dQw4w9WgXcQ/transcript.json",
+   *   "transcriptUrl": "https://barkstech-media.sfo3.digitaloceanspaces.com/transcripts/dQw4w9WgXcQ/transcript.txt",
+   *   "transcriptJsonUrl": "https://barkstech-media.sfo3.digitaloceanspaces.com/transcripts/dQw4w9WgXcQ/transcript.json",
    *   "metadata": {
    *     "duration": "3:33",
    *     "language": "en",

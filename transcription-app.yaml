@@ -37,11 +37,11 @@ services:
         scope: RUN_AND_BUILD_TIME
         type: SECRET
       - key: DO_SPACES_REGION
-        value: nyc3
+        value: sfo3
       - key: DO_SPACES_BUCKET
         value: barkstech-media
       - key: DO_SPACES_ENDPOINT
-        value: https://nyc3.digitaloceanspaces.com
+        value: https://sfo3.digitaloceanspaces.com
       - key: API_KEY_SECRET
         scope: RUN_AND_BUILD_TIME
         type: SECRET

@@ -66,7 +66,7 @@ Complete all checks before deploying to production.
 
 - [ ] **DigitalOcean Spaces bucket created**
   - Bucket name verified
-  - Region set to production location (e.g., nyc3)
+  - Region set to production location (e.g., sfo3)
   - Access keys generated and stored securely
   
 - [ ] **Bucket has CORS policy**
@@ -120,7 +120,7 @@ Complete all checks before deploying to production.
 - [ ] **Instance created**
   - Image: Ubuntu 22.04 LTS
   - Size: s-2vcpu-4gb (minimum for Whisper)
-  - Region: nyc3 (same as Spaces bucket)
+  - Region: sfo3 (same as Spaces bucket)
   - Backups: Enabled
 
 - [ ] **Initial configuration**

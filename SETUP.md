@@ -156,9 +156,9 @@ REDIS_URL=redis://localhost:6379
 # DigitalOcean Spaces (required)
 DO_SPACES_KEY=your_access_key
 DO_SPACES_SECRET=your_secret_key
-DO_SPACES_REGION=nyc3
+DO_SPACES_REGION=sfo3
 DO_SPACES_BUCKET=barkstech-media
-DO_SPACES_ENDPOINT=https://nyc3.digitaloceanspaces.com
+DO_SPACES_ENDPOINT=https://sfo3.digitaloceanspaces.com
 
 # API Security (required)
 API_KEY_SECRET=your_shadow_api_key_here
