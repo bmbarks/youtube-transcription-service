@@ -34,8 +34,9 @@ WORKDIR /app
 # Copy package files first (better layer caching)
 COPY package*.json ./
 
-# Install Node.js dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install Node.js dependencies (production only, no dev deps)
+# Using npm install instead of npm ci to handle missing package-lock.json gracefully
+RUN npm install --omit=dev && npm cache clean --force
 
 # Copy application code
 COPY . .
