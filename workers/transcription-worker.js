@@ -2,7 +2,8 @@ import Queue from 'bull';
 import config from '../config/environment.js';
 import logger from '../utils/logger.js';
 import { extractYouTubeTranscript, getVideoMetadata } from '../utils/ytdlp.js';
-import { transcribeWithWhisper, downloadAudioFromYouTube } from '../utils/whisper.js';
+// Using faster-whisper (CTranslate2) for 4x speed + 10x smaller Docker image
+import { transcribeWithWhisper, downloadAudioFromYouTube } from '../utils/whisper-faster.js';
 import { uploadTranscript, getTranscriptUrl } from '../utils/spaces.js';
 import { extractVideoId } from '../utils/videoId.js';
 

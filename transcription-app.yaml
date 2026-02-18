@@ -1,30 +1,41 @@
 name: youtube-transcription-service
+
+# NOTE: Using Dockerfile-based build (not buildpacks)
+# This enables faster-whisper + Python + Node.js in one container
+
 services:
   - name: app
+    # Docker-based deployment
+    dockerfile_path: Dockerfile
     github:
       branch: main
       repo: barkstech/youtube-transcription-service
-    build_command: npm ci
-    run_command: node server.js
     http_port: 3000
     health_check:
       http_path: /health
+      initial_delay_seconds: 60
+      period_seconds: 30
+      timeout_seconds: 10
+      success_threshold: 1
+      failure_threshold: 3
     instance_count: 1
-    instance_size_slug: basic-xs
-    env:
+    # Upgraded: basic-xs (512MB) can't run Whisper
+    # professional-xs: 1 vCPU, 2GB RAM (~$12/mo) - minimum for transcription
+    instance_size_slug: professional-xs
+    envs:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: "3000"
       - key: REDIS_URL
         scope: RUN_AND_BUILD_TIME
-        value: ${REDIS_URL}
+        type: SECRET
       - key: DO_SPACES_KEY
         scope: RUN_AND_BUILD_TIME
-        value: ${DO_SPACES_KEY}
+        type: SECRET
       - key: DO_SPACES_SECRET
         scope: RUN_AND_BUILD_TIME
-        value: ${DO_SPACES_SECRET}
+        type: SECRET
       - key: DO_SPACES_REGION
         value: nyc3
       - key: DO_SPACES_BUCKET
@@ -33,7 +44,7 @@ services:
         value: https://nyc3.digitaloceanspaces.com
       - key: API_KEY_SECRET
         scope: RUN_AND_BUILD_TIME
-        value: ${API_KEY_SECRET}
+        type: SECRET
       - key: WHISPER_MODEL
         value: small
       - key: WHISPER_DEVICE
@@ -49,8 +60,7 @@ services:
       - key: ENABLE_FALLBACK
         value: "true"
     log_destinations:
-      - name: stdout
-        format: json
+      - name: app-logs
 
 databases:
   - name: redis-db
