@@ -1,0 +1,59 @@
+name: youtube-transcription-service
+services:
+  - name: app
+    github:
+      branch: main
+      repo: barkstech/youtube-transcription-service
+    build_command: npm ci
+    run_command: node server.js
+    http_port: 3000
+    health_check:
+      http_path: /health
+    instance_count: 1
+    instance_size_slug: basic-xs
+    env:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: REDIS_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${REDIS_URL}
+      - key: DO_SPACES_KEY
+        scope: RUN_AND_BUILD_TIME
+        value: ${DO_SPACES_KEY}
+      - key: DO_SPACES_SECRET
+        scope: RUN_AND_BUILD_TIME
+        value: ${DO_SPACES_SECRET}
+      - key: DO_SPACES_REGION
+        value: nyc3
+      - key: DO_SPACES_BUCKET
+        value: barkstech-media
+      - key: DO_SPACES_ENDPOINT
+        value: https://nyc3.digitaloceanspaces.com
+      - key: API_KEY_SECRET
+        scope: RUN_AND_BUILD_TIME
+        value: ${API_KEY_SECRET}
+      - key: WHISPER_MODEL
+        value: small
+      - key: WHISPER_DEVICE
+        value: cpu
+      - key: WORKER_CONCURRENCY
+        value: "1"
+      - key: LOG_LEVEL
+        value: info
+      - key: ENABLE_YOUTUBE_TIER
+        value: "true"
+      - key: ENABLE_WHISPER_TIER
+        value: "true"
+      - key: ENABLE_FALLBACK
+        value: "true"
+    log_destinations:
+      - name: stdout
+        format: json
+
+databases:
+  - name: redis-db
+    version: "7"
+    engine: REDIS
+    production: true

@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: transcription-redis
+    # ports:
+    #   - "6379:6379"  # Commented out - not needed, app uses internal Docker network
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --appendfsync everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - transcription-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: transcription-app
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      REDIS_URL: redis://redis:6379
+      DO_SPACES_KEY: ${DO_SPACES_KEY}
+      DO_SPACES_SECRET: ${DO_SPACES_SECRET}
+      DO_SPACES_REGION: nyc3
+      DO_SPACES_BUCKET: ${DO_SPACES_BUCKET}
+      DO_SPACES_ENDPOINT: https://nyc3.digitaloceanspaces.com
+      API_KEY_SECRET: ${API_KEY_SECRET:-dev-secret}
+      WHISPER_MODEL: small
+      WHISPER_DEVICE: cpu
+      WORKER_CONCURRENCY: 1
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - transcription-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  redis-data:
+
+networks:
+  transcription-network:
+    driver: bridge

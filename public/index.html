@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Transcription Service</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(2, 136, 204, 0.3);
+      border-radius: 50%;
+      border-top-color: #0288cc;
+      animation: spin 1s ease-in-out infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .fade-in {
+      animation: fadeIn 0.3s ease-in;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-4xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-3xl font-bold text-gray-900">YouTube Transcription</h1>
+          <p class="text-sm text-gray-600 mt-1">Extract and transcribe YouTube videos instantly</p>
+        </div>
+        <div class="text-right">
+          <div id="healthStatus" class="text-sm font-medium text-green-600 flex items-center gap-2">
+            <div class="w-2 h-2 bg-green-600 rounded-full"></div>
+            Connected
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+    <!-- Input Section -->
+    <div id="inputSection" class="bg-white rounded-lg shadow-md p-6 mb-8 fade-in">
+      <div class="mb-6">
+        <label for="videoUrl" class="block text-sm font-medium text-gray-700 mb-2">
+          YouTube Video URL
+        </label>
+        <input
+          type="url"
+          id="videoUrl"
+          placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+        />
+        <p class="text-xs text-gray-500 mt-2">Supports: youtube.com, youtu.be, and video IDs</p>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <button
+          id="submitBtn"
+          onclick="submitTranscription()"
+          class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+        >
+          <span id="btnText">Submit</span>
+          <span id="btnSpinner" class="hidden spinner"></span>
+        </button>
+
+        <label class="flex items-center gap-2 cursor-pointer text-sm">
+          <input
+            type="checkbox"
+            id="forceWhisper"
+            class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span class="text-gray-700">Force Whisper Transcription</span>
+          <span class="text-gray-500 text-xs">(skip YouTube captions)</span>
+        </label>
+      </div>
+
+      <p id="errorMessage" class="text-red-600 text-sm mt-4 hidden"></p>
+    </div>
+
+    <!-- Progress Section (hidden initially) -->
+    <div id="progressSection" class="hidden bg-white rounded-lg shadow-md p-6 mb-8 fade-in">
+      <div class="mb-4">
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">Processing</h3>
+        <div class="flex items-center gap-3 mb-2">
+          <div class="spinner"></div>
+          <p id="progressStage" class="text-sm text-gray-600">Initializing...</p>
+        </div>
+      </div>
+
+      <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+        <div
+          id="progressBar"
+          class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+          style="width: 0%"
+        ></div>
+      </div>
+
+      <p id="progressPercent" class="text-sm text-gray-600 text-center">0% Complete</p>
+      <p id="estimatedTime" class="text-sm text-gray-500 text-center mt-2">Calculating estimated time...</p>
+    </div>
+
+    <!-- Results Section (hidden initially) -->
+    <div id="resultsSection" class="hidden space-y-6 fade-in">
+      <!-- Video Info Card -->
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-2xl font-bold text-gray-900 mb-4" id="videoTitle">Video Title</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div>
+            <p class="text-sm text-gray-600 mb-1">Channel</p>
+            <p id="videoChannel" class="text-lg font-semibold text-gray-900">Unknown</p>
+          </div>
+          <div>
+            <p class="text-sm text-gray-600 mb-1">Duration</p>
+            <p id="videoDuration" class="text-lg font-semibold text-gray-900">Unknown</p>
+          </div>
+          <div>
+            <p class="text-sm text-gray-600 mb-1">Source</p>
+            <div class="flex items-center gap-2">
+              <span id="videoSource" class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">YouTube Native</span>
+            </div>
+          </div>
+          <div>
+            <p class="text-sm text-gray-600 mb-1">Confidence</p>
+            <p id="videoConfidence" class="text-lg font-semibold text-gray-900">98%</p>
+          </div>
+        </div>
+
+        <div class="bg-gray-50 rounded-lg p-4">
+          <p class="text-sm text-gray-600 mb-2">Processing Time</p>
+          <p id="processTime" class="text-base font-semibold text-gray-900">~0.8 seconds</p>
+        </div>
+      </div>
+
+      <!-- Transcript Card -->
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-xl font-bold text-gray-900">Transcript</h3>
+          <div class="flex gap-2">
+            <button
+              onclick="copyTranscript()"
+              class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-900 rounded-lg transition-colors text-sm font-medium"
+            >
+              📋 Copy
+            </button>
+            <button
+              onclick="downloadTranscript()"
+              class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-900 rounded-lg transition-colors text-sm font-medium"
+            >
+              ⬇️ Download JSON
+            </button>
+            <button
+              onclick="forceRefresh()"
+              class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors text-sm font-medium"
+            >
+              🔄 Force Fresh
+            </button>
+          </div>
+        </div>
+
+        <textarea
+          id="transcriptText"
+          readonly
+          class="w-full h-64 p-4 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm resize-vertical focus:outline-none"
+        ></textarea>
+
+        <p id="charCount" class="text-sm text-gray-500 mt-2">0 characters</p>
+      </div>
+
+      <!-- Metadata Card -->
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <h3 class="text-lg font-bold text-gray-900 mb-4">Details</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <p class="text-sm text-gray-600 mb-1">Tier</p>
+            <p id="metaTier" class="font-semibold text-gray-900">Tier 1 (YouTube Native)</p>
+          </div>
+          <div>
+            <p class="text-sm text-gray-600 mb-1">Language</p>
+            <p id="metaLanguage" class="font-semibold text-gray-900">English</p>
+          </div>
+          <div>
+            <p class="text-sm text-gray-600 mb-1">Downloaded</p>
+            <p id="metaDownloaded" class="font-semibold text-gray-900 font-mono text-sm">2026-02-18 08:50:00</p>
+          </div>
+          <div>
+            <p class="text-sm text-gray-600 mb-1">Transcript ID</p>
+            <p id="metaVideoId" class="font-semibold text-gray-900 font-mono text-sm">abc123</p>
+          </div>
+        </div>
+
+        <div class="mt-6 pt-6 border-t border-gray-200">
+          <p class="text-sm text-gray-600 mb-2">Transcript URLs</p>
+          <div class="space-y-2">
+            <div class="flex items-center justify-between bg-gray-50 p-3 rounded">
+              <p class="text-xs text-gray-500 font-mono truncate">
+                <a id="txtLink" href="#" class="text-blue-600 hover:underline">Plain Text URL</a>
+              </p>
+            </div>
+            <div class="flex items-center justify-between bg-gray-50 p-3 rounded">
+              <p class="text-xs text-gray-500 font-mono truncate">
+                <a id="jsonLink" href="#" class="text-blue-600 hover:underline">JSON URL</a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-gray-100 border-t border-gray-200 mt-12">
+    <div class="max-w-4xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+      <p class="text-sm text-gray-600">
+        YouTube Transcription Service • <span id="version">v1.0.0</span>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    // Global state
+    let currentJobId = null;
+    let pollInterval = null;
+
+    // Submit transcription
+    async function submitTranscription() {
+      const url = document.getElementById('videoUrl').value.trim();
+      const forceWhisper = document.getElementById('forceWhisper').checked;
+      const errorMessage = document.getElementById('errorMessage');
+
+      // Validate
+      if (!url) {
+        errorMessage.textContent = 'Please enter a YouTube URL';
+        errorMessage.classList.remove('hidden');
+        return;
+      }
+
+      // Show loading state
+      document.getElementById('submitBtn').disabled = true;
+      document.getElementById('btnText').classList.add('hidden');
+      document.getElementById('btnSpinner').classList.remove('hidden');
+      errorMessage.classList.add('hidden');
+
+      try {
+        const response = await fetch('/api/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, forceWhisper }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to submit transcription');
+        }
+
+        currentJobId = data.jobId;
+
+        // Show progress and hide input
+        document.getElementById('inputSection').classList.add('hidden');
+        document.getElementById('resultsSection').classList.add('hidden');
+        document.getElementById('progressSection').classList.remove('hidden');
+
+        // Start polling
+        pollJob();
+        pollInterval = setInterval(pollJob, 2000);
+      } catch (error) {
+        errorMessage.textContent = error.message;
+        errorMessage.classList.remove('hidden');
+      } finally {
+        document.getElementById('submitBtn').disabled = false;
+        document.getElementById('btnText').classList.remove('hidden');
+        document.getElementById('btnSpinner').classList.add('hidden');
+      }
+    }
+
+    // Poll job status
+    async function pollJob() {
+      if (!currentJobId) return;
+
+      try {
+        const response = await fetch(`/api/status/${currentJobId}`);
+        const data = await response.json();
+
+        if (data.status === 'complete') {
+          clearInterval(pollInterval);
+          fetchResults(data.videoId);
+        } else if (data.status === 'failed') {
+          clearInterval(pollInterval);
+          document.getElementById('progressSection').classList.add('hidden');
+          document.getElementById('inputSection').classList.remove('hidden');
+          document.getElementById('errorMessage').textContent = data.error || 'Transcription failed';
+          document.getElementById('errorMessage').classList.remove('hidden');
+        } else if (data.status === 'processing') {
+          updateProgress(data);
+        } else if (data.status === 'queued') {
+          document.getElementById('progressStage').textContent = `Queued (position ~${data.position || 'unknown'})`;
+        }
+      } catch (error) {
+        console.error('Poll error:', error);
+      }
+    }
+
+    // Update progress display
+    function updateProgress(data) {
+      const progress = data.progress * 100;
+      document.getElementById('progressBar').style.width = progress + '%';
+      document.getElementById('progressPercent').textContent = Math.round(progress) + '% Complete';
+      document.getElementById('progressStage').textContent = data.stage || 'Processing...';
+      if (data.estimatedTimeRemaining) {
+        document.getElementById('estimatedTime').textContent = data.estimatedTimeRemaining;
+      }
+    }
+
+    // Fetch and display results
+    async function fetchResults(videoId) {
+      try {
+        const response = await fetch(`/api/transcript/${videoId}`);
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error);
+        }
+
+        displayResults(result);
+      } catch (error) {
+        document.getElementById('progressSection').classList.add('hidden');
+        document.getElementById('inputSection').classList.remove('hidden');
+        document.getElementById('errorMessage').textContent = error.message;
+        document.getElementById('errorMessage').classList.remove('hidden');
+      }
+    }
+
+    // Display results
+    async function displayResults(result) {
+      // Hide progress, show results
+      document.getElementById('progressSection').classList.add('hidden');
+      document.getElementById('resultsSection').classList.remove('hidden');
+
+      // Video info
+      document.getElementById('videoTitle').textContent = result.title || 'Unknown';
+      document.getElementById('videoChannel').textContent = result.channel || 'Unknown';
+      document.getElementById('videoDuration').textContent = result.metadata?.duration || 'Unknown';
+      document.getElementById('videoSource').textContent = result.source === 'youtube-native' ? 'YouTube Native' : 'Whisper AI';
+      document.getElementById('videoSource').className = result.source === 'youtube-native'
+        ? 'px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium'
+        : 'px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium';
+      document.getElementById('videoConfidence').textContent = Math.round(result.confidence * 100) + '%';
+      document.getElementById('processTime').textContent = result.processTime;
+
+      // Metadata
+      document.getElementById('metaTier').textContent = result.metadata?.tier === 1 ? 'Tier 1 (YouTube Native)' : 'Tier 2 (Whisper AI)';
+      document.getElementById('metaLanguage').textContent = (result.metadata?.language || 'en').toUpperCase();
+      document.getElementById('metaDownloaded').textContent = new Date(result.metadata?.downloadedAt).toLocaleString();
+      document.getElementById('metaVideoId').textContent = result.videoId;
+
+      // Transcript URLs
+      document.getElementById('txtLink').href = result.transcriptUrl;
+      document.getElementById('txtLink').textContent = result.transcriptUrl;
+      document.getElementById('jsonLink').href = result.transcriptJsonUrl;
+      document.getElementById('jsonLink').textContent = result.transcriptJsonUrl;
+
+      // Fetch and display transcript
+      try {
+        const transcriptResponse = await fetch(result.transcriptUrl);
+        const transcript = await transcriptResponse.text();
+        document.getElementById('transcriptText').value = transcript;
+        document.getElementById('charCount').textContent = transcript.length.toLocaleString() + ' characters';
+      } catch (error) {
+        document.getElementById('transcriptText').value = 'Failed to load transcript. Visit the URL above.';
+      }
+
+      // Store video ID for later use
+      window.currentVideoId = result.videoId;
+    }
+
+    // Copy transcript
+    function copyTranscript() {
+      const textarea = document.getElementById('transcriptText');
+      textarea.select();
+      document.execCommand('copy');
+      const btn = event.target;
+      const original = btn.textContent;
+      btn.textContent = '✅ Copied!';
+      setTimeout(() => {
+        btn.textContent = original;
+      }, 2000);
+    }
+
+    // Download transcript as JSON
+    function downloadTranscript() {
+      const videoId = window.currentVideoId;
+      if (!videoId) return;
+
+      const link = document.getElementById('jsonLink');
+      const a = document.createElement('a');
+      a.href = link.href;
+      a.download = `transcript-${videoId}.json`;
+      a.click();
+    }
+
+    // Force refresh (re-transcribe with Whisper)
+    function forceRefresh() {
+      const videoUrl = `https://www.youtube.com/watch?v=${window.currentVideoId}`;
+      document.getElementById('videoUrl').value = videoUrl;
+      document.getElementById('forceWhisper').checked = true;
+
+      document.getElementById('resultsSection').classList.add('hidden');
+      document.getElementById('inputSection').classList.remove('hidden');
+      document.getElementById('inputSection').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Check health on load
+    window.addEventListener('load', async () => {
+      try {
+        const response = await fetch('/health');
+        if (response.ok) {
+          document.getElementById('healthStatus').innerHTML = '<div class="w-2 h-2 bg-green-600 rounded-full"></div>Connected';
+        } else {
+          document.getElementById('healthStatus').innerHTML = '<div class="w-2 h-2 bg-red-600 rounded-full"></div>Error';
+        }
+      } catch (error) {
+        document.getElementById('healthStatus').innerHTML = '<div class="w-2 h-2 bg-red-600 rounded-full"></div>Disconnected';
+      }
+    });
+
+    // Allow Enter key to submit
+    document.getElementById('videoUrl').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        submitTranscription();
+      }
+    });
+  </script>
+</body>
+</html>
