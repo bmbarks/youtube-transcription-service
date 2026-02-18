@@ -37,12 +37,16 @@ services:
       WHISPER_MODEL: small
       WHISPER_DEVICE: cpu
       WORKER_CONCURRENCY: 1
+      # Cookie injection for bot detection bypass
+      YOUTUBE_COOKIES_PATH: /app/cookies/youtube_cookies.txt
     depends_on:
       redis:
         condition: service_healthy
     volumes:
       - .:/app
       - /app/node_modules
+      # Mount cookies directory as read-only for security
+      - ./cookies:/app/cookies:ro
     networks:
       - transcription-network
     healthcheck:

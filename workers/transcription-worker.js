@@ -61,6 +61,8 @@ export function createTranscriptionQueue() {
    * 1. Try YouTube native transcript
    * 2. Fall back to Whisper if Tier 1 fails
    * 3. Allow user override with forceWhisper flag
+   * 
+   * V1.1 - Cookie injection for bot detection bypass
    */
   transcriptionQueue.process(config.worker.concurrency, async job => {
     const { url, forceWhisper = false } = job.data;
@@ -75,9 +77,24 @@ export function createTranscriptionQueue() {
       });
 
       // Get video metadata first
-      let metadata = await getVideoMetadata(url);
-      if (!metadata) {
-        throw new Error('Could not fetch video metadata');
+      let metadata;
+      try {
+        metadata = await getVideoMetadata(url);
+        if (!metadata) {
+          throw new Error('Could not fetch video metadata');
+        }
+      } catch (error) {
+        // Handle bot detection during metadata fetch
+        if (error.code === 'BOT_DETECTION' || error.code === 'COOKIES_EXPIRED') {
+          logger.error('Bot detection during metadata fetch', {
+            jobId,
+            videoId,
+            code: error.code,
+            message: error.message,
+          });
+          throw new Error(`${error.code}: ${error.message}. Please refresh YouTube cookies.`);
+        }
+        throw error;
       }
 
       // Update job progress
@@ -89,62 +106,81 @@ export function createTranscriptionQueue() {
       if (config.features.enableYoutubeTier && !forceWhisper) {
         logger.info('Attempting Tier 1: YouTube native transcript', { jobId, videoId });
 
-        const youtubeTranscript = await extractYouTubeTranscript(url);
+        try {
+          const youtubeTranscript = await extractYouTubeTranscript(url);
 
-        if (youtubeTranscript && youtubeTranscript.transcript.length > 0) {
-          logger.info('Tier 1 success: YouTube transcript found', {
-            jobId,
-            videoId,
-            lines: youtubeTranscript.transcript.length,
-          });
+          if (youtubeTranscript && youtubeTranscript.transcript.length > 0) {
+            logger.info('Tier 1 success: YouTube transcript found', {
+              jobId,
+              videoId,
+              lines: youtubeTranscript.transcript.length,
+            });
 
-          job.progress(50);
+            job.progress(50);
 
-          // Upload to Spaces
-          const plainTextTranscript = youtubeTranscript.transcript
-            .map(s => s.text)
-            .join('\n');
+            // Upload to Spaces
+            const plainTextTranscript = youtubeTranscript.transcript
+              .map(s => s.text)
+              .join('\n');
 
-          const transcriptUrl = await uploadTranscript(
-            videoId,
-            'transcript.txt',
-            plainTextTranscript,
-            'text/plain'
-          );
+            const transcriptUrl = await uploadTranscript(
+              videoId,
+              'transcript.txt',
+              plainTextTranscript,
+              'text/plain'
+            );
 
-          const transcriptJsonUrl = await uploadTranscript(
-            videoId,
-            'transcript.json',
-            JSON.stringify(youtubeTranscript.transcript, null, 2),
-            'application/json'
-          );
+            const transcriptJsonUrl = await uploadTranscript(
+              videoId,
+              'transcript.json',
+              JSON.stringify(youtubeTranscript.transcript, null, 2),
+              'application/json'
+            );
 
-          result = {
-            jobId,
-            videoId,
-            title: metadata.title,
-            channel: metadata.channel,
-            url: metadata.url,
-            source: 'youtube-native',
-            confidence: youtubeTranscript.confidence,
-            processTime: youtubeTranscript.processTime,
-            transcriptUrl,
-            transcriptJsonUrl,
-            metadata: {
-              duration: metadata.duration,
-              language: youtubeTranscript.language,
-              downloadedAt: youtubeTranscript.downloadedAt,
-              tier: 1,
-            },
-          };
+            result = {
+              jobId,
+              videoId,
+              title: metadata.title,
+              channel: metadata.channel,
+              url: metadata.url,
+              source: 'youtube-native',
+              confidence: youtubeTranscript.confidence,
+              processTime: youtubeTranscript.processTime,
+              transcriptUrl,
+              transcriptJsonUrl,
+              metadata: {
+                duration: metadata.duration,
+                language: youtubeTranscript.language,
+                downloadedAt: youtubeTranscript.downloadedAt,
+                tier: 1,
+              },
+            };
 
-          job.progress(100);
-          return result;
-        } else {
-          logger.info('Tier 1 failed: No YouTube transcript found', {
-            jobId,
-            videoId,
-          });
+            job.progress(100);
+            return result;
+          } else {
+            logger.info('Tier 1 failed: No YouTube transcript found', {
+              jobId,
+              videoId,
+            });
+          }
+        } catch (error) {
+          // Handle bot detection during transcript extraction
+          if (error.code === 'BOT_DETECTION' || error.code === 'COOKIES_EXPIRED') {
+            logger.error('Bot detection during Tier 1 transcript extraction', {
+              jobId,
+              videoId,
+              code: error.code,
+            });
+            // Don't throw yet - fall through to Tier 2 which might work
+            logger.info('Attempting Tier 2 fallback after bot detection', { jobId, videoId });
+          } else {
+            logger.warn('Tier 1 extraction error (non-fatal)', {
+              jobId,
+              videoId,
+              error: error.message,
+            });
+          }
         }
       }
 
@@ -157,62 +193,76 @@ export function createTranscriptionQueue() {
       job.progress(10);
 
       // Download audio
-      logger.info('Downloading audio from YouTube', { jobId, videoId });
-      const audioPath = await downloadAudioFromYouTube(url);
-      job.progress(40);
+      try {
+        logger.info('Downloading audio from YouTube', { jobId, videoId });
+        const audioPath = await downloadAudioFromYouTube(url);
+        job.progress(40);
 
-      // Transcribe with Whisper
-      logger.info('Running Whisper transcription', { jobId, videoId });
-      const whisperResult = await transcribeWithWhisper(audioPath);
-      job.progress(90);
+        // Transcribe with Whisper
+        logger.info('Running Whisper transcription', { jobId, videoId });
+        const whisperResult = await transcribeWithWhisper(audioPath);
+        job.progress(90);
 
-      // Upload to Spaces
-      const plainTextTranscript = whisperResult.transcript
-        .map(s => s.text)
-        .join('\n');
+        // Upload to Spaces
+        const plainTextTranscript = whisperResult.transcript
+          .map(s => s.text)
+          .join('\n');
 
-      const transcriptUrl = await uploadTranscript(
-        videoId,
-        'transcript.txt',
-        plainTextTranscript,
-        'text/plain'
-      );
+        const transcriptUrl = await uploadTranscript(
+          videoId,
+          'transcript.txt',
+          plainTextTranscript,
+          'text/plain'
+        );
 
-      const transcriptJsonUrl = await uploadTranscript(
-        videoId,
-        'transcript.json',
-        JSON.stringify(whisperResult.transcript, null, 2),
-        'application/json'
-      );
+        const transcriptJsonUrl = await uploadTranscript(
+          videoId,
+          'transcript.json',
+          JSON.stringify(whisperResult.transcript, null, 2),
+          'application/json'
+        );
 
-      result = {
-        jobId,
-        videoId,
-        title: metadata.title,
-        channel: metadata.channel,
-        url: metadata.url,
-        source: 'whisper-small',
-        confidence: whisperResult.confidence,
-        processTime: whisperResult.processTime,
-        transcriptUrl,
-        transcriptJsonUrl,
-        metadata: {
-          duration: metadata.duration,
-          language: whisperResult.language,
-          downloadedAt: whisperResult.downloadedAt,
-          tier: 2,
-        },
-      };
+        result = {
+          jobId,
+          videoId,
+          title: metadata.title,
+          channel: metadata.channel,
+          url: metadata.url,
+          source: 'whisper-small',
+          confidence: whisperResult.confidence,
+          processTime: whisperResult.processTime,
+          transcriptUrl,
+          transcriptJsonUrl,
+          metadata: {
+            duration: metadata.duration,
+            language: whisperResult.language,
+            downloadedAt: whisperResult.downloadedAt,
+            tier: 2,
+          },
+        };
 
-      logger.info('Tier 2 transcription completed successfully', {
-        jobId,
-        videoId,
-        confidence: result.confidence,
-        processTime: result.processTime,
-      });
+        logger.info('Tier 2 transcription completed successfully', {
+          jobId,
+          videoId,
+          confidence: result.confidence,
+          processTime: result.processTime,
+        });
 
-      job.progress(100);
-      return result;
+        job.progress(100);
+        return result;
+      } catch (error) {
+        // Handle bot detection during audio download
+        if (error.code === 'BOT_DETECTION' || error.code === 'COOKIES_EXPIRED') {
+          logger.error('Bot detection during Tier 2 audio download', {
+            jobId,
+            videoId,
+            code: error.code,
+            message: error.message,
+          });
+          throw new Error(`${error.code}: ${error.message}`);
+        }
+        throw error;
+      }
     } catch (error) {
       logger.error('Job processing failed', {
         jobId,
@@ -238,11 +288,21 @@ export function createTranscriptionQueue() {
    * Job failure handler
    */
   transcriptionQueue.on('failed', (job, error) => {
+    // Check if it was a bot detection failure
+    const isBotDetection = error.message && (
+      error.message.includes('BOT_DETECTION') || 
+      error.message.includes('COOKIES_EXPIRED')
+    );
+    
     logger.error('Transcription job failed after retries', {
       jobId: job.id,
       attempts: job.attemptsMade,
       maxAttempts: job.opts.attempts,
       error: error.message,
+      isBotDetection,
+      recommendation: isBotDetection 
+        ? 'Refresh YouTube cookies from Chrome browser' 
+        : 'Check video availability or server logs',
     });
   });
 

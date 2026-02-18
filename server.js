@@ -9,8 +9,34 @@ import createTranscriptionQueue from './workers/transcription-worker.js';
 import createTranscribeRouter from './routes/transcribe.js';
 import createStatusRouter from './routes/status.js';
 import createTranscriptRouter from './routes/transcript.js';
+import { validateCookies, getCookieHealth, getYtdlpVersion } from './lib/youtube-downloader.js';
 
 const app = express();
+
+// Trust proxy (needed for DigitalOcean App Platform X-Forwarded-For headers)
+app.set('trust proxy', 1);
+
+// ===== STARTUP COOKIE VERIFICATION =====
+logger.info('=== Cookie Injection Status ===');
+const cookieValidation = validateCookies();
+if (cookieValidation.valid) {
+  logger.info('✅ YouTube cookies loaded successfully', {
+    path: cookieValidation.path,
+    cookieCount: cookieValidation.cookieCount,
+    ageHours: cookieValidation.ageHours,
+    status: cookieValidation.status,
+  });
+  if (cookieValidation.warning) {
+    logger.warn('⚠️ Cookie warning: ' + cookieValidation.warning);
+  }
+} else {
+  logger.warn('⚠️ YouTube cookies NOT available - running without auth', {
+    status: cookieValidation.status,
+    warning: cookieValidation.warning,
+  });
+  logger.warn('⚠️ Bot detection may occur. To fix: export cookies from Chrome to /app/cookies/youtube_cookies.txt');
+}
+logger.info('================================');
 
 // Initialize transcription queue (persisted to Redis)
 const transcriptionQueue = createTranscriptionQueue();
@@ -20,6 +46,7 @@ logger.info('YouTube Transcription Service Starting', {
   port: config.port,
   redisUrl: config.redis.url,
   whisperModel: config.whisper.model,
+  cookieStatus: cookieValidation.status,
 });
 
 // Middleware
@@ -31,14 +58,29 @@ app.use(globalRateLimiter);
 // Serve static files (web UI)
 app.use(express.static('./public'));
 
-// Public health check endpoint
+// Public health check endpoint with cookie monitoring
 app.get('/health', async (req, res) => {
   try {
     const health = await transcriptionQueue.getQueueHealth();
+    const cookieHealth = getCookieHealth();
+    const ytdlpVersion = await getYtdlpVersion();
+    
+    // Determine overall status based on cookie health
+    let overallStatus = 'ok';
+    if (cookieHealth.cookies.status === 'critical') {
+      overallStatus = 'degraded';
+    } else if (cookieHealth.cookies.status === 'missing' || cookieHealth.cookies.status === 'invalid') {
+      overallStatus = 'warning';
+    }
+    
     res.json({
-      status: 'ok',
+      status: overallStatus,
       redis: 'connected',
       ...health,
+      ytdlp: {
+        version: ytdlpVersion,
+        ...cookieHealth,
+      },
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
     });
@@ -110,6 +152,8 @@ app.listen(PORT, () => {
     url: `http://localhost:${PORT}`,
     apiUrl: `http://localhost:${PORT}/api`,
     healthCheck: `http://localhost:${PORT}/health`,
+    cookieStatus: cookieValidation.status,
+    cookieWarning: cookieValidation.warning || 'none',
   });
 });
 

@@ -48,6 +48,8 @@ export const config = {
     socketTimeout: parseInt(process.env.YTTDLP_SOCKET_TIMEOUT || '30', 10),
     retries: parseInt(process.env.YTTDLP_RETRIES || '3', 10),
     extractFlat: process.env.YTTDLP_EXTRACT_FLAT === 'true',
+    // Cookie injection configuration
+    cookiesPath: process.env.YOUTUBE_COOKIES_PATH || '/app/cookies/youtube_cookies.txt',
   },
   
   api: {

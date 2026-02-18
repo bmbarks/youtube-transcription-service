@@ -1,9 +1,10 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { unlinkSync, existsSync, readFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, readdirSync, statSync } from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import logger from './logger.js';
 import config from '../config/environment.js';
+import { executeYtdlp } from '../lib/youtube-downloader.js';
 
 const execPromise = promisify(exec);
 
@@ -105,12 +106,11 @@ print(json.dumps(result))
 }
 
 /**
- * Download audio from YouTube video
- * Uses yt-dlp to extract audio
+ * Download audio from YouTube video using cookies for bot detection bypass
+ * Uses yt-dlp to extract audio with authenticated session
  */
 export async function downloadAudioFromYouTube(videoUrl) {
   const tempDir = `/tmp/whisper_${uuidv4()}`;
-  // Note: %(ext)s must be quoted to prevent shell interpretation of parentheses
   const outputTemplate = `${tempDir}/audio.%(ext)s`;
 
   try {
@@ -118,17 +118,24 @@ export async function downloadAudioFromYouTube(videoUrl) {
     const fsPromises = await import('fs').then(m => m.promises);
     await fsPromises.mkdir(tempDir, { recursive: true });
 
-    // Download audio using yt-dlp
+    // Download audio using yt-dlp with cookies
     // Format selector: ba[ext=m4a] (best audio m4a) -> ba (best audio) -> b (best overall)
     // This fallback chain handles YouTube API changes that block specific format requests
-    const command = `yt-dlp -f 'ba[ext=m4a]/ba/b' --extract-audio --audio-format mp3 --audio-quality 192K -o '${outputTemplate}' "${videoUrl}"`;
+    const args = [
+      '-f', "'ba[ext=m4a]/ba/b'",
+      '--extract-audio',
+      '--audio-format', 'mp3',
+      '--audio-quality', '192K',
+      '-o', `'${outputTemplate}'`,
+      `"${videoUrl}"`,
+    ];
 
     logger.info('Starting audio download from YouTube', {
       videoUrl,
       outputDir: tempDir,
     });
 
-    await execPromise(command, {
+    await executeYtdlp(args, {
       timeout: 300000, // 5 minutes timeout
       maxBuffer: 100 * 1024 * 1024,
     });
@@ -151,6 +158,16 @@ export async function downloadAudioFromYouTube(videoUrl) {
 
     return audioPath;
   } catch (error) {
+    // If bot detection, provide better error message
+    if (error.code === 'BOT_DETECTION' || error.code === 'COOKIES_EXPIRED') {
+      logger.error('Bot detection during audio download', {
+        videoUrl,
+        code: error.code,
+        message: error.message,
+      });
+      throw error;
+    }
+    
     logger.error('Failed to download audio from YouTube', {
       videoUrl,
       error: error.message,
