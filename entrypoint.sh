@@ -15,6 +15,8 @@ echo "DO_SPACES_REGION: $DO_SPACES_REGION"
 
 # Download cookies if configured
 if [ -n "$YOUTUBE_COOKIES_URL" ]; then
+  # Force delete old cached cookies file (may be from Docker layer)
+  rm -f /app/cookies/youtube_cookies.txt
   echo "Attempting cookie download..."
   python3 -u << 'EOF'
 import os, sys
