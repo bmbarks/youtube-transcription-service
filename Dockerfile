@@ -54,8 +54,9 @@ RUN mkdir -p /tmp/whisper
 # Create cookies directory (will be downloaded from Spaces at runtime)
 RUN mkdir -p /app/cookies
 
-# Make startup script executable
-RUN chmod +x /app/scripts/startup.sh
+# Copy and make entrypoint executable
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Expose port
 EXPOSE 3000
@@ -64,6 +65,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:3000/health || exit 1
 
-# Start application via startup script (downloads cookies from Spaces first)
-# Must use array form with bash interpreter for shell script
-CMD ["/bin/bash", "/app/scripts/startup.sh"]
+# Use entrypoint for explicit logging and cookie download
+ENTRYPOINT ["/app/entrypoint.sh"]
