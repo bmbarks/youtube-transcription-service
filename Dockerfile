@@ -63,4 +63,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:3000/health || exit 1
 
 # Start application via startup script (downloads cookies from Spaces first)
-CMD ["/app/scripts/startup.sh"]
+# Must use array form with bash interpreter for shell script
+CMD ["/bin/bash", "/app/scripts/startup.sh"]
