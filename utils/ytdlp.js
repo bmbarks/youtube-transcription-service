@@ -11,6 +11,8 @@ const execPromise = promisify(exec);
  * Extract YouTube native transcript using yt-dlp with cookie support
  * Returns transcript data or null if not available
  * Tier 1 - Returns data in <1 second
+ * 
+ * FIXED: v1.2 - Proper quote handling for cookies + file paths
  */
 export async function extractYouTubeTranscript(videoUrl, options = {}) {
   const startTime = Date.now();
@@ -18,27 +20,39 @@ export async function extractYouTubeTranscript(videoUrl, options = {}) {
 
   try {
     const videoId = extractVideoId(videoUrl);
+    logger.info('Starting YouTube transcript extraction', { videoId, workDir });
 
     // Create temp directory for subtitle files
     const fsPromises = await import('fs').then(m => m.promises);
     await fsPromises.mkdir(workDir, { recursive: true });
 
     // Build yt-dlp command to extract subtitles
-    // Write subs to temp directory, then read the file
+    // FIX: Don't quote arguments - let executeYtdlp() handle shell escaping
     const args = [
       '--write-subs',
       '--write-auto-subs', // Also try auto-generated captions
       '--skip-download',
       '--sub-format', 'json3',
       '--sub-langs', 'en,en-US,en-GB,en.*', // Try various English variants
-      '-o', `"${workDir}/%(id)s.%(ext)s"`,
-      `"${videoUrl}"`,
+      '-o', `${workDir}/%(id)s.%(ext)s`,  // ✅ FIXED: Removed quotes
+      videoUrl,  // ✅ FIXED: Removed quotes
     ];
 
     try {
+      logger.debug('Executing yt-dlp for subtitle extraction', {
+        videoId,
+        argsCount: args.length,
+        workDir,
+      });
+
       const { stdout, stderr } = await executeYtdlp(args, {
         timeout: 30000, // 30 second timeout
         maxBuffer: 50 * 1024 * 1024,
+      });
+
+      logger.debug('yt-dlp subtitle extraction completed', {
+        videoId,
+        stderrLength: stderr?.length || 0,
       });
 
       // Find the subtitle file
@@ -46,7 +60,12 @@ export async function extractYouTubeTranscript(videoUrl, options = {}) {
       const subFile = files.find(f => f.endsWith('.json3') || f.endsWith('.en.json3'));
       
       if (!subFile) {
-        logger.warn('No subtitle file found in output', { videoId, files, workDir });
+        logger.warn('No subtitle file found in output', { 
+          videoId, 
+          filesCount: files.length,
+          files: files.slice(0, 5), // Log first 5 files
+          workDir,
+        });
         // Cleanup
         await fsPromises.rm(workDir, { recursive: true, force: true }).catch(() => {});
         return null;
@@ -61,17 +80,22 @@ export async function extractYouTubeTranscript(videoUrl, options = {}) {
       await fsPromises.rm(workDir, { recursive: true, force: true }).catch(() => {});
 
       if (!transcript || transcript.length === 0) {
-        logger.warn('No transcript parsed from subtitle file', { videoId, subFile });
+        logger.warn('No transcript parsed from subtitle file', { 
+          videoId, 
+          subFile,
+          contentLength: subContent.length,
+        });
         return null;
       }
 
       const processTime = Date.now() - startTime;
 
-      logger.info('YouTube transcript extracted successfully', {
+      logger.info('✅ YouTube transcript extracted successfully (Tier 1)', {
         videoId,
         lines: transcript.length,
         processTime: `${processTime}ms`,
         source: 'youtube-native',
+        confidence: 0.98,
       });
 
       return {
@@ -88,25 +112,37 @@ export async function extractYouTubeTranscript(videoUrl, options = {}) {
       await fsPromises.rm(workDir, { recursive: true, force: true }).catch(() => {});
       
       // Check if this is a bot detection / cookies issue
-      if (error.code === 'BOT_DETECTION' || error.code === 'COOKIES_EXPIRED') {
-        logger.error('Bot detection during transcript extraction', {
+      if (error.code === 'BOT_DETECTION') {
+        logger.error('❌ Bot detection during transcript extraction', {
           videoId,
-          code: error.code,
+          code: 'BOT_DETECTION',
           message: error.message,
+          recommendation: 'Refresh YouTube cookies from Chrome browser',
         });
-        // Re-throw with enriched info - let worker handle it
+        throw error;
+      }
+
+      if (error.code === 'COOKIES_EXPIRED') {
+        logger.error('❌ Cookies expired during transcript extraction', {
+          videoId,
+          code: 'COOKIES_EXPIRED',
+          message: error.message,
+          recommendation: 'Re-export YouTube cookies from Chrome',
+        });
         throw error;
       }
 
       if (error.code === 'ETIMEDOUT') {
-        logger.error('yt-dlp timeout - video may be unavailable', {
+        logger.error('⏱️ yt-dlp timeout - video may be unavailable', {
           videoId,
-          error: 'Command timed out after 30 seconds',
+          timeout: '30 seconds',
+          recommendation: 'Video may be region-locked or require auth',
         });
       } else {
-        logger.error('yt-dlp transcript extraction failed', {
+        logger.warn('⚠️ yt-dlp transcript extraction failed (non-fatal)', {
           videoId,
           error: error.message,
+          willFallback: true,
         });
       }
       return null;
@@ -119,6 +155,7 @@ export async function extractYouTubeTranscript(videoUrl, options = {}) {
     
     logger.error('Failed to extract YouTube transcript', {
       error: error.message,
+      stack: error.stack,
     });
     return null;
   }
@@ -157,6 +194,7 @@ function parseYouTubeSubtitles(jsonStr) {
   } catch (error) {
     logger.error('Failed to parse YouTube subtitle JSON', {
       error: error.message,
+      jsonLength: jsonStr?.length || 0,
     });
     return [];
   }
@@ -164,15 +202,18 @@ function parseYouTubeSubtitles(jsonStr) {
 
 /**
  * Get video metadata (title, duration, channel) using yt-dlp with cookies
+ * FIXED: v1.2 - Proper quote handling
  */
 export async function getVideoMetadata(videoUrl) {
   try {
     const videoId = extractVideoId(videoUrl);
+    logger.info('Fetching video metadata', { videoId });
 
+    // FIX: Don't quote the URL - let executeYtdlp() handle it
     const args = [
       '--dump-json',
       '--no-warnings',
-      `"${videoUrl}"`,
+      videoUrl,  // ✅ FIXED: No quotes
     ];
 
     const { stdout } = await executeYtdlp(args, {
@@ -182,21 +223,34 @@ export async function getVideoMetadata(videoUrl) {
 
     const metadata = JSON.parse(stdout);
 
-    return {
+    const result = {
       videoId,
       title: metadata.title || 'Unknown',
       channel: metadata.uploader || 'Unknown',
       duration: metadata.duration ? formatDuration(metadata.duration) : 'Unknown',
       url: metadata.webpage_url || videoUrl,
     };
+
+    logger.info('✅ Video metadata retrieved successfully', {
+      videoId,
+      title: result.title.substring(0, 50),
+      channel: result.channel,
+    });
+
+    return result;
   } catch (error) {
     // If bot detection, rethrow
     if (error.code === 'BOT_DETECTION' || error.code === 'COOKIES_EXPIRED') {
+      logger.error('❌ Bot detection during metadata fetch', {
+        code: error.code,
+        message: error.message,
+      });
       throw error;
     }
     
     logger.error('Failed to get video metadata', {
       error: error.message,
+      videoUrl: videoUrl.substring(0, 50),
     });
     return null;
   }
