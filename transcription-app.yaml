@@ -59,6 +59,10 @@ services:
         value: "true"
       - key: ENABLE_FALLBACK
         value: "true"
+      # YouTube Cookie Injection (Option 2 - Bulletproof)
+      # Cookies are stored in DO Spaces, downloaded on startup
+      - key: YOUTUBE_COOKIES_URL
+        value: s3://barkstech-media/youtube-transcription-cookies/youtube_cookies.txt
     log_destinations:
       - name: app-logs
 

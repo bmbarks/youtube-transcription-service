@@ -49,8 +49,11 @@ COPY . .
 # Create temp directories for audio processing
 RUN mkdir -p /tmp/whisper
 
-# Create cookies directory (will be mounted at runtime)
+# Create cookies directory (will be downloaded from Spaces at runtime)
 RUN mkdir -p /app/cookies
+
+# Make startup script executable
+RUN chmod +x /app/scripts/startup.sh
 
 # Expose port
 EXPOSE 3000
@@ -59,5 +62,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:3000/health || exit 1
 
-# Start application
-CMD ["node", "server.js"]
+# Start application via startup script (downloads cookies from Spaces first)
+CMD ["/app/scripts/startup.sh"]
