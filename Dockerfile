@@ -17,8 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Python packages (faster-whisper uses CTranslate2, NOT PyTorch)
 # This avoids the 3GB+ PyTorch CUDA bloat entirely
 # yt-dlp installed separately to ensure latest version
+# boto3 for DigitalOcean Spaces cookie downloads
 RUN pip3 install --no-cache-dir \
-    faster-whisper
+    faster-whisper \
+    boto3
 
 # Install yt-dlp separately - always get latest for bot detection fixes
 # YouTube frequently updates their anti-bot measures, yt-dlp updates weekly
